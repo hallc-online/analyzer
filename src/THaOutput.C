@@ -416,12 +416,6 @@ void THaOutput::BuildList( const vector<string>& vdata)
       if (CmpNoCase(vdata[1],"epics") == 0) fOpenEpics = kFALSE;
     }
     if (fOpenEpics) {
-       cout << "THaOutput::ERROR: Syntax error in output.def"<<endl;
-       cout << "Must 'begin' and 'end' before 'begin' again."<<endl;
-       cout << "e.g. 'begin epics' ..... 'end epics'"<<endl;
-       return ;
-    }
-    if (fOpenEpics) {
        if (fFirstEpics) {
            if (!fEpicsTree)
               fEpicsTree = new TTree("E","Hall A Epics Data");
@@ -680,7 +674,9 @@ Int_t THaOutput::LoadFile( const char* filename )
 	ErrFile(0, str);
 	continue;
       }
-      Int_t ikey = FindKey(strvect[0]);
+      fIsScalar = kFALSE;  // this may be set true by svPrefix
+      string svkey = svPrefix(strvect[0]);
+      Int_t ikey = FindKey(svkey);
       string sname = StripBracket(strvect[1]);
       switch (ikey) {
       case kVar:
@@ -711,7 +707,7 @@ Int_t THaOutput::LoadFile( const char* filename )
 	  continue;
 	}
 	fHistos.push_back(
-			  new THaVhist(strvect[0],sname,stitle));
+			  new THaVhist(svkey,sname,stitle));
 	// Tentatively assign variables and cuts as strings. 
 	// Later will check if they are actually THaVform's.
 	fHistos.back()->SetX(nx, xlo, xhi, sfvarx);
@@ -719,6 +715,9 @@ Int_t THaOutput::LoadFile( const char* filename )
 	  fHistos.back()->SetY(ny, ylo, yhi, sfvary);
 	}
 	if (iscut != fgNocut) fHistos.back()->SetCut(scut);
+// If we know now that its a scalar, inform the histogram to remain that way
+// and over-ride its internal rules for self-determining if its a vector.
+        if (fIsScalar) fHistos.back()->SetScalarTrue();
 	break;
       case kBlock:
 	// Do not strip brackets for block regexps: use strvect[1] not sname
@@ -732,7 +731,7 @@ Int_t THaOutput::LoadFile( const char* filename )
       case kEnd:
 	break;
       default:
-	cout << "Warning: keyword "<<strvect[0]<<" undefined "<<endl;
+	cout << "Warning: keyword "<<svkey<<" undefined "<<endl;
       }
     }
   }
@@ -751,6 +750,36 @@ Int_t THaOutput::LoadFile( const char* filename )
   }
 
   return 0;
+}
+
+//_____________________________________________________________________________s
+std::string THaOutput::svPrefix(std::string& histtype)
+{
+// If the arg is a string for a histogram type, we strip the initial 
+// "s" or "v".  If the first character is "s" we set fIsScalar true.
+  int ldebug=1;
+  fIsScalar = kFALSE;
+  string sresult = histtype;
+  if (ldebug) cout << "svPrefix  histogram  type = "<<histtype<<"   histtype length  "<<histtype.length()<<endl;
+// For histograms `histtype' is of the form "XthNY" 
+// with X="s" or "v" and N=1 or 2,  Y = "f" or "d"
+// For example, "sth1f".  Note it always has length 5
+  if (histtype.length() != 5) return sresult;  
+  string sfirst = histtype.substr(0,1); 
+  if (ldebug) cout << "sfirst = "<<sfirst<<endl;
+  if(CmpNoCase(sfirst,"s")==0) fIsScalar = kTRUE;
+  sresult=histtype.substr(1);
+// Needs to be a histogram, not something else like block
+  if( (CmpNoCase(sresult,"th1f")!=0) &&
+      (CmpNoCase(sresult,"th2f")!=0) &&
+      (CmpNoCase(sresult,"th1d")!=0) &&
+      (CmpNoCase(sresult,"th2d")!=0) ) return histtype;  // return original
+  if (ldebug) {
+      cout << "result  "<<sresult<< endl;
+      if (fIsScalar) cout << "fScalar is TRUE"<<endl;
+  }
+  return sresult;
+
 }
 
 //_____________________________________________________________________________
